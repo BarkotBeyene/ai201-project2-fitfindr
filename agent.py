@@ -19,9 +19,38 @@ Usage (once implemented):
 """
 
 from tools import search_listings, suggest_outfit, create_fit_card
+import re
 
 
 # ── session state ─────────────────────────────────────────────────────────────
+def parse_query(query: str) -> dict:
+    text = query.lower()
+ 
+    max_price = None
+    price_match = re.search(r"(?:under|max|below)\s*\$?(\d+(?:\.\d+)?)", text)
+    if not price_match:
+        price_match = re.search(r"\$(\d+(?:\.\d+)?)", text)
+    if price_match:
+        max_price = float(price_match.group(1))
+ 
+    size = None
+    size_match = re.search(r"size\s*[:\-]?\s*([a-z0-9/]+)", text)
+    if size_match:
+        size = size_match.group(1).upper()
+ 
+    first_sentence = re.split(r"[.!?]", query)[0]
+    description = first_sentence
+    description = re.sub(r"(?:under|max|below)\s*\$?\d+(?:\.\d+)?", "", description, flags=re.IGNORECASE)
+    description = re.sub(r"\$\d+(?:\.\d+)?", "", description, flags=re.IGNORECASE)
+    description = re.sub(r"size\s*[:\-]?\s*[a-zA-Z0-9/]+", "", description, flags=re.IGNORECASE)
+    description = re.sub(
+        r"\b(i'?m\s+)?(looking for|searching for|want|need)\s+(a|an|some)?\b",
+        "", description, flags=re.IGNORECASE,
+    )
+    description = re.sub(r"[,]+", " ", description)
+    description = re.sub(r"\s+", " ", description).strip()
+ 
+    return {"description": description, "size": size, "max_price": max_price}
 
 def _new_session(query: str, wardrobe: dict) -> dict:
     """
@@ -63,38 +92,37 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         first — if it is not None, the interaction ended early and the other
         output fields (outfit_suggestion, fit_card) will be None.
 
-    TODO — implement this function using the planning loop you designed in planning.md:
-
-        Step 1: Initialize the session with _new_session().
-
-        Step 2: Parse the user's query to extract a description, size, and
-                max_price. You can use regex, string splitting, or ask the LLM
-                to parse it — document your choice in planning.md.
-                Store the result in session["parsed"].
-
-        Step 3: Call search_listings() with the parsed parameters.
-                Store results in session["search_results"].
-                If no results: set session["error"] to a helpful message and
-                return the session early. Do NOT proceed to suggest_outfit
-                with empty input.
-
-        Step 4: Select the item to use (e.g., the top result).
-                Store it in session["selected_item"].
-
-        Step 5: Call suggest_outfit() with the selected item and wardrobe.
-                Store the result in session["outfit_suggestion"].
-
-        Step 6: Call create_fit_card() with the outfit suggestion and selected item.
-                Store the result in session["fit_card"].
-
-        Step 7: Return the session.
-
-    Before writing code, complete the Planning Loop and State Management sections
-    of planning.md — your implementation should match what you described there.
     """
-    # TODO: implement the planning loop
     session = _new_session(query, wardrobe)
-    session["error"] = "Planning loop not yet implemented."
+ 
+    # Step 2: parse
+    session["parsed"] = parse_query(query)
+ 
+    # Step 3: search
+    results = search_listings(
+        session["parsed"]["description"],
+        session["parsed"]["size"],
+        session["parsed"]["max_price"],
+    )
+    session["search_results"] = results
+ 
+    if not results:
+        session["error"] = (
+            "No listings matched your search. Try raising your price limit "
+            "or removing the size filter."
+        )
+        return session  # early return — steps 4-6 skipped
+ 
+    # Step 4: select top result
+    session["selected_item"] = results[0]
+ 
+    # Step 5: suggest outfit
+    session["outfit_suggestion"] = suggest_outfit(session["selected_item"], wardrobe)
+ 
+    # Step 6: create fit card
+    session["fit_card"] = create_fit_card(session["outfit_suggestion"], session["selected_item"])
+ 
+    # Step 7: return
     return session
 
 
