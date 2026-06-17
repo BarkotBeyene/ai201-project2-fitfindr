@@ -33,18 +33,41 @@ def handle_query(user_query: str, wardrobe_choice: str) -> tuple[str, str, str]:
             (listing_text, outfit_suggestion, fit_card)
         Each string maps to one of the three output panels in the UI.
 
-    TODO:
-        1. Guard against an empty query (return early with an error message).
-        2. Select the wardrobe based on wardrobe_choice.
-        3. Call run_agent() with the query and selected wardrobe.
-        4. If session["error"] is set, return the error in the first panel
-           and empty strings for the other two.
-        5. Otherwise, format session["selected_item"] into a readable listing_text
-           string and return it along with session["outfit_suggestion"] and
-           session["fit_card"].
     """
-    # TODO: implement this function
-    return "Agent not yet implemented.", "", ""
+    # Step 1: guard against empty query
+    if not user_query or not user_query.strip():
+        return "Please enter a search query.", "", ""
+
+    # Step 2: select wardrobe
+    if wardrobe_choice == "Empty wardrobe (new user)":
+        wardrobe = get_empty_wardrobe()
+    else:
+        wardrobe = get_example_wardrobe()
+
+    # Step 3: call run_agent
+    session = run_agent(query=user_query, wardrobe=wardrobe)
+
+    # Step 4: error path
+    if session["error"]:
+        return session["error"], "", ""
+
+    # Step 5: happy path — format the listing into readable text
+    item = session["selected_item"]
+    lines = [
+        item["title"],
+        f"${item['price']:.2f} · {item['platform']} · {item['condition']} condition",
+        f"Size: {item['size']}",
+    ]
+    if item.get("brand"):
+        lines.append(f"Brand: {item['brand']}")
+    if item.get("style_tags"):
+        lines.append(f"Tags: {', '.join(item['style_tags'])}")
+    if item.get("description"):
+        lines.append("")
+        lines.append(item["description"])
+    listing_text = "\n".join(lines)
+
+    return listing_text, session["outfit_suggestion"], session["fit_card"]
 
 
 # ── interface ─────────────────────────────────────────────────────────────────
