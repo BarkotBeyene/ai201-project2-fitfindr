@@ -70,6 +70,8 @@ def search_listings(
 
     Before writing code, fill in the Tool 1 section of planning.md.
     """
+    LOW_SIGNAL_WORDS = {"vintage"}
+    MIN_DESCRIPTION_WORD_LENGTH = 4
 
     listings = load_listings()
     query_words = set(re.findall(r"[a-z0-9]+", description.lower()))
@@ -84,17 +86,25 @@ def search_listings(
             if size.strip().lower() not in item_size.strip().lower():
                 continue
 
-        searchable = " ".join([
+        title_tags_text = " ".join([
             item.get("title", ""),
-            item.get("description", ""),
             " ".join(item.get("style_tags", [])),
         ]).lower()
-        searchable_words = set(re.findall(r"[a-z0-9]+", searchable))
+        title_tags_words = set(re.findall(r"[a-z0-9]+", title_tags_text))
 
-        score = len(query_words & searchable_words)
-        if score == 0:
+        desc_text = item.get("description", "").lower()
+        desc_words = set(re.findall(r"[a-z0-9]+", desc_text))
+        desc_words_filtered = {w for w in desc_words if len(w) >= MIN_DESCRIPTION_WORD_LENGTH}
+
+        title_tag_matches = query_words & title_tags_words
+        desc_matches = query_words & desc_words_filtered
+
+        all_matches = title_tag_matches | desc_matches
+        meaningful_matches = all_matches - LOW_SIGNAL_WORDS
+        if not meaningful_matches:
             continue
 
+        score = (len(title_tag_matches) * 2) + len(desc_matches)
         results.append((score, item))
 
     results.sort(key=lambda pair: pair[0], reverse=True)
